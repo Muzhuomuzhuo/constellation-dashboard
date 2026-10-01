@@ -1,0 +1,101 @@
+'use strict';
+(() => {
+  const D=window.MISSION_DATA;
+  if(!D){document.querySelector('main').innerHTML='<p style="padding:40px">数据文件未加载，请先运行 python ui/build_dashboard.py。</p>';return;}
+  const $=id=>document.getElementById(id),fmt=(n,d=2)=>n==null||!Number.isFinite(Number(n))?'—':Number(n).toFixed(d);
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const epoch=new Date(D.config.epoch_utc).getTime(),clock=s=>new Date(epoch+s*1000).toISOString().slice(11,19),date=s=>new Date(epoch+s*1000).toISOString().slice(0,10);
+  const names={fujian:'福建遥感优选',joint:'双区域遥感优选',navigation:'导航优选',communication:'通信优选'};
+  const cities={Fuzhou:'福州',Xiamen:'厦门',KualaLumpur:'吉隆坡',Kuching:'古晋',KotaKinabalu:'亚庇'};
+  const pageNames={overview:'项目总览',revisit:'遥感重访',services:'业务取舍',evidence:'验收证据'};
+  function stat(label,value,unit,detail){return `<article class="stat"><div class="stat-label">${label}</div><div class="stat-value">${value}<small>${unit}</small></div><div class="stat-detail">${detail}</div></article>`;}
+  function switchPage(page,updateHash=true){
+    if(!pageNames[page])page='overview';
+    document.querySelectorAll('.page').forEach(el=>el.hidden=el.id!==`page-${page}`);
+    document.querySelectorAll('[data-page]').forEach(el=>{const active=el.dataset.page===page;el.classList.toggle('active',active);if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
+    $('breadcrumb').textContent=pageNames[page];if(updateHash)history.replaceState(null,'',`#${page}`);if(page==='overview')drawGlobe();if(page==='revisit')renderRevisit();if(page==='services')renderSearch();window.scrollTo({top:0,behavior:'instant'});
+  }
+  document.querySelectorAll('[data-page],[data-goto]').forEach(el=>el.addEventListener('click',()=>switchPage(el.dataset.page||el.dataset.goto)));
+  document.querySelector('.brand').addEventListener('click',e=>{e.preventDefault();switchPage('overview');});window.addEventListener('hashchange',()=>switchPage(location.hash.slice(1),false));
+  const navMin=Math.min(...D.services.navigation.map(p=>p.nav_pdop_available_pct)),commMin=Math.min(...D.services.communication.map(p=>p.comm_available_pct));
+  $('overview-stats').innerHTML=stat('星座规模',D.config.total_satellites,'颗','固定规模 · 圆轨道 / 600 km')+stat('已筛选构型',D.audit.service_candidates,'种','面数 × 倾角 × 全整数相位')+stat('区域评价点',D.audit.evaluation_points,'个','福建 + 西马 + 东马 · 0.5°网格')+stat('正式复核时长',D.config.validation_days,'天','10 秒步长 · 含 5 秒敏感性检查');
+  $('snapshot-date').textContent=`结果更新 ${D.status.generated_utc.slice(0,10)}`;
+  const milestones=[['基础物理与回归测试','轨道、窗口、PDOP及批量算法一致性',D.evidence[0].status==='passed'],['候选搜索与长时复核','225 构型初筛 · 短名单七天复核',D.evidence[2].status==='passed'],['逐点与逐窗口结果审计',`${D.audit.evaluation_points} 个评价点 · ${D.audit.window_files_checked} 份窗口文件`,D.audit.status==='passed'],['图表与实验报告交付','构型、区域重访、业务比较等 8 张图',D.status.figures_status==='completed_matplotlib_from_matlab_outputs']];
+  $('milestones').innerHTML=milestones.map(([title,sub,ok])=>`<div class="milestone"><span class="check-circle">${ok?'✓':'○'}</span><div><strong>${title}</strong><small>${sub}</small></div><span class="verified">${ok?'已验证':'待验证'}</span></div>`).join('');
+  const targets=[['福建遥感','最大几何空窗 · 目标 ≤ 30 分钟',D.status.fujian_worst_gap_min,'分',D.status.fujian_remote_target_met],['双区域遥感','最大几何空窗 · 目标 ≤ 30 分钟',D.status.joint_worst_gap_min,'分',D.status.joint_remote_target_met],['双区域导航','最低PDOP可用率 · 目标 ≥ 99%',navMin,'%',D.status.nav_target_met],['双区域通信','最低几何覆盖率 · 目标 ≥ 99%',commMin,'%',D.status.comm_target_met]];
+  $('target-list').innerHTML=targets.map(([title,sub,value,unit,ok])=>`<div class="target"><div class="target-name">${title}<small>${sub}</small></div><div class="target-number">${fmt(value)}<small>${unit}</small></div><span class="tag ${ok?'green':'amber'}">${ok?'达标':'未达门限'}</span></div>`).join('');
+  $('tradeoff-number').textContent=fmt(D.comparison.find(r=>r.design==='navigation'&&r.region==='malaysia').remote_max_gap_min);
+
+  // Orthographic preview of the MATLAB-exported initial orbital elements.
+  const canvas=$('globe'),ctx=canvas.getContext('2d'),rad=x=>x*Math.PI/180;
+  let yaw=-.30,pitch=.28,zoom=1,drag=null;
+  function camera(v){const x=v[0]*Math.cos(yaw)-v[2]*Math.sin(yaw),z=v[0]*Math.sin(yaw)+v[2]*Math.cos(yaw);return[x,v[1]*Math.cos(pitch)-z*Math.sin(pitch),v[1]*Math.sin(pitch)+z*Math.cos(pitch)];}
+  function project(v,cx,cy,s){const p=camera([v[1],v[2],v[0]]);return[cx+s*p[0],cy-s*p[1],p[2]];}
+  function orbitPosition(oe,u){const O=rad(oe.raan_deg),i=rad(oe.inclination_deg),a=oe.semimajor_axis_km/6378.137;return[a*(Math.cos(O)*Math.cos(u)-Math.sin(O)*Math.sin(u)*Math.cos(i)),a*(Math.sin(O)*Math.cos(u)+Math.cos(O)*Math.sin(u)*Math.cos(i)),a*Math.sin(u)*Math.sin(i)];}
+  function geoVector(lon,lat){const d=D.config.epoch_jd-2451545,c=d/36525,theta=rad((280.46061837+360.98564736629*d+.000387933*c*c-c*c*c/38710000)%360),a=rad(lon)+theta,b=rad(lat);return[Math.cos(b)*Math.cos(a),Math.cos(b)*Math.sin(a),Math.sin(b)];}
+  function rings(geo){const out=[];for(const f of geo.features){const polygons=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;for(const polygon of polygons)out.push(...polygon);}return out;}
+  const boundaryRings=Object.values(D.boundaries).flatMap(rings);
+  function drawGlobe(){
+    const box=canvas.getBoundingClientRect();if(box.width===0)return;const w=box.width,h=box.height,dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=w*dpr;canvas.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+    const cx=w/2,cy=h/2,s=Math.min(w*.28,h*.38)*zoom,glow=ctx.createRadialGradient(cx,cy,s*.1,cx,cy,s*1.7);glow.addColorStop(0,'#26545b');glow.addColorStop(1,'#102e38');ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle='#24434c';ctx.lineWidth=.5;for(let x=20;x<w;x+=35){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=10;y<h;y+=35){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    const surface=ctx.createRadialGradient(cx-s*.35,cy-s*.4,s*.1,cx,cy,s);surface.addColorStop(0,'#28545c');surface.addColorStop(.8,'#163c47');surface.addColorStop(1,'#13313c');ctx.fillStyle=surface;ctx.beginPath();ctx.arc(cx,cy,s,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#42717a';ctx.lineWidth=1;ctx.stroke();
+    function path(vectors,color,width=1){ctx.beginPath();let down=false;for(const v of vectors){const p=project(v,cx,cy,s),hidden=p[2]<0&&Math.hypot(p[0]-cx,p[1]-cy)<s;if(hidden){down=false;continue;}if(down)ctx.lineTo(p[0],p[1]);else ctx.moveTo(p[0],p[1]);down=true;}ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke();}
+    for(let lat=-60;lat<=60;lat+=20)path(Array.from({length:181},(_,j)=>geoVector(j*2-180,lat)),'#41606a',.5);
+    for(let lon=-180;lon<180;lon+=30)path(Array.from({length:91},(_,j)=>geoVector(lon,j*2-90)),'#41606a',.5);
+    for(const ring of boundaryRings)path(ring.map(([lon,lat])=>geoVector(lon,lat)),'#d5ad66',1.1);
+    const key=$('design-select').value,orbits=D.orbits[key];for(const oe of orbits.filter(o=>o.slot_id===1))path(Array.from({length:181},(_,j)=>orbitPosition(oe,j*Math.PI/90)),'#62a39d77',.75);
+    const dots=orbits.map(oe=>project(orbitPosition(oe,rad(oe.true_anomaly_deg+oe.arg_perigee_deg)),cx,cy,s)).sort((a,b)=>a[2]-b[2]);for(const p of dots){if(p[2]<0&&Math.hypot(p[0]-cx,p[1]-cy)<s)continue;ctx.beginPath();ctx.fillStyle=p[2]>0?'#bcf5de':'#669994';ctx.arc(p[0],p[1],p[2]>0?2.3:1.5,0,Math.PI*2);ctx.fill();}
+    const d=D.designs[key];$('orbit-facts').innerHTML=`<div><span>轨道面 P</span><strong>${d.P}</strong></div><div><span>相位 F</span><strong>${d.F}</strong></div><div><span>倾角</span><strong>${d.inc_deg}°</strong></div><div><span>轨道高度</span><strong>${d.altitude_km}<small style="font-size:10px"> km</small></strong></div>`;canvas.setAttribute('aria-label',`${names[key]}：108颗卫星，${d.P}轨道面，相位${d.F}，倾角${d.inc_deg}度，高度600公里。可拖动旋转观察。`);
+  }
+  canvas.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});canvas.addEventListener('pointermove',e=>{if(!drag)return;yaw+=(e.clientX-drag.x)*.006;pitch=Math.max(-1.4,Math.min(1.4,pitch+(e.clientY-drag.y)*.006));drag={x:e.clientX,y:e.clientY};drawGlobe();});canvas.addEventListener('pointerup',()=>drag=null);canvas.addEventListener('pointercancel',()=>drag=null);canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.75,Math.min(1.2,zoom-e.deltaY*.001));drawGlobe();},{passive:false});
+  $('globe-reset').addEventListener('click',()=>{yaw=-.3;pitch=.28;zoom=1;drawGlobe();});$('design-select').addEventListener('change',drawGlobe);new ResizeObserver(drawGlobe).observe(canvas);
+
+  // All access intervals are loaded from MATLAB-generated window CSVs.
+  $('city-select').innerHTML=Object.entries(cities).map(([key,label])=>`<option value="${key}">${label} / ${key==='Fuzhou'||key==='Xiamen'?'福建':'马来西亚'}</option>`).join('');$('day-select').innerHTML=Array.from({length:7},(_,i)=>`<option value="${i}">第 ${i+1} 天</option>`).join('');
+  function currentRemote(){const design=$('remote-design').value,city=$('city-select').value,mode=$('mode-select').value;return{design,city,mode,point:D.remote[design].find(p=>p.point===city),windows:D.windows[design][city][mode]};}
+  function drawRegionMap(point){
+    const minLon=97,maxLon=123,minLat=-1,maxLat=30,w=560,h=310,pad=30,scale=Math.min((w-2*pad)/(maxLon-minLon),(h-2*pad)/(maxLat-minLat)),x=lon=>(w-(maxLon-minLon)*scale)/2+(lon-minLon)*scale,y=lat=>h-pad-(lat-minLat)*scale;
+    let svg=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="福建、马来西亚边界及${esc(cities[point.point])}位置">`;
+    for(let lat=0;lat<=30;lat+=10)svg+=`<line x1="30" x2="530" y1="${y(lat)}" y2="${y(lat)}" stroke="#e5ece6"/><text x="10" y="${y(lat)+4}" font-size="10" fill="#91a097">${lat}°</text>`;
+    for(const geo of Object.values(D.boundaries)){const paths=rings(geo).map(ring=>ring.map(([lon,lat],j)=>`${j?'L':'M'}${x(lon).toFixed(2)},${y(lat).toFixed(2)}`).join('')+'Z').join('');svg+=`<path d="${paths}" fill="#e1eee3" fill-rule="evenodd" stroke="#91b5a0" stroke-width=".7"/>`;}
+    for(const p of D.remote[$('remote-design').value])svg+=`<circle cx="${x(p.lon_deg)}" cy="${y(p.lat_deg)}" r="1.5" fill="#549c82" opacity=".6"/>`;
+    svg+=`<text x="${x(119)+17}" y="${y(27)}" font-size="12" fill="#577d69">福建</text><text x="${x(100)-35}" y="${y(7)}" font-size="11" fill="#577d69">西马</text><text x="${x(112)}" y="${y(8)}" font-size="11" fill="#577d69">东马</text><circle cx="${x(point.lon_deg)}" cy="${y(point.lat_deg)}" r="7" fill="#d49342" opacity=".18"/><circle cx="${x(point.lon_deg)}" cy="${y(point.lat_deg)}" r="3.5" fill="#b8792a"/><text x="${x(point.lon_deg)+10}" y="${y(point.lat_deg)+16}" font-size="11" fill="#946b36">${cities[point.point]}</text></svg>`;$('region-map').innerHTML=svg;
+  }
+  function renderRevisit(){
+    const {design,city,mode,point,windows}=currentRemote(),day=+$('day-select').value,start=day*86400,end=start+86400,mean=mode==='geometric'?point.mean_start_interval_min:point.optical_mean_start_interval_min,starts=windows.map(w=>w[3]).filter(v=>v!==null),maxStart=starts.length?Math.max(...starts):null,maxGap=mode==='geometric'?point.max_observed_gap_min:point.optical_max_gap_min;
+    $('download-windows').href=`./results/full/windows_${design}_${city}_${mode}.csv`;
+    $('revisit-stats').innerHTML=stat('平均开始到开始',fmt(mean),'分钟','七天范围内的有效开始间隔')+stat('最大开始到开始',fmt(maxStart),'分钟','区别于两次机会之间的空窗')+stat('最大观测空窗',fmt(maxGap),'分钟',mode==='optical'?'包含太阳高度限制':'无几何成像机会的最长时间')+stat('成像机会窗口',windows.length,'次','窗口合并后统计 · 非影像交付量');
+    const visible=windows.filter(w=>w[0]<end&&w[1]>start);$('day-label').textContent=`${cities[city]} · ${date(start)} 00:00—24:00 UTC`;
+    const w=Math.max(240,$('timeline').clientWidth||1040),pad=24,scale=(w-2*pad)/86400;let svg=`<svg viewBox="0 0 ${w} 112" role="img" aria-label="${cities[city]}当日${visible.length}个成像机会窗口"><rect x="${pad}" y="27" width="${w-pad*2}" height="34" rx="4" fill="#edf2ee"/>`;
+    for(let hour=0;hour<=24;hour+=w<500?6:w<800?4:2){const x=pad+hour*3600*scale;svg+=`<line x1="${x}" x2="${x}" y1="18" y2="67" stroke="#dce5dd" stroke-width=".7"/><text x="${x}" y="87" text-anchor="middle" font-size="12" fill="#7b8981">${hour.toString().padStart(2,'0')}:00</text>`;}
+    for(const item of visible){const x=pad+(Math.max(item[0],start)-start)*scale,b=(Math.min(item[1],end)-Math.max(item[0],start))*scale;svg+=`<rect x="${x}" y="29" width="${Math.max(.8,b)}" height="30" rx=".5" fill="#148d80"><title>${clock(item[0])}—${clock(item[1])} UTC · 持续${fmt(item[1]-item[0],0)}秒</title></rect>`;}
+    $('timeline').innerHTML=svg+'</svg>';const duration=visible.reduce((s,r)=>s+Math.min(r[1],end)-Math.max(r[0],start),0)/60;
+    $('window-summary').textContent=`当日共 ${visible.length} 个相交窗口，日内累计机会 ${fmt(duration)} 分钟。细条代表短窗口，可在右下方查看逐次起止时间。`;$('window-count').textContent=`${visible.length} 个窗口`;
+    $('window-body').innerHTML=visible.length?visible.map(r=>`<tr><td>${clock(r[0])}${r[0]<start?'（前日）':''}</td><td>${clock(r[1])}${r[1]>=end?'（次日）':''}</td><td>${fmt(r[1]-r[0],0)}</td><td>${fmt(r[2])}</td></tr>`).join(''):'<tr><td colspan="4">当日无机会窗口</td></tr>';drawRegionMap(point);
+  }
+  ['remote-design','city-select','mode-select','day-select'].forEach(id=>$(id).addEventListener('change',renderRevisit));
+
+  let region='malaysia',candidate=12;const comparisonNames={remote_joint:'双区域遥感',navigation:'导航优选',communication:'通信优选'};
+  function renderComparison(){const subset=D.comparison.filter(r=>r.region===region),metrics=[['remote_max_gap_min','最大遥感空窗','分钟 · 越小越好','几何遥感目标 ≤ 30 分钟'],['min_nav_availability_pct','最低导航可用率','% · 越大越好','假设目标 ≥ 99%'],['min_comm_availability_pct','最低通信覆盖率','% · 越大越好','假设目标 ≥ 99%']];$('comparison-charts').innerHTML=metrics.map(([key,title,unit,target])=>{const max=key==='remote_max_gap_min'?Math.max(...subset.map(r=>r[key]))*1.08:100;return `<article class="compare-panel"><h2>${title}</h2><span class="caption">${unit} / ${region==='fujian'?'福建':'马来西亚'}</span>${subset.map(r=>`<div class="compare-row"><div><span>${comparisonNames[r.design]}</span><strong>${fmt(r[key])}</strong></div><div class="bar-track"><div class="bar-fill" style="width:${r[key]/max*100}%"></div></div></div>`).join('')}<div class="threshold">${target}</div></article>`;}).join('');}
+  document.querySelectorAll('[data-region]').forEach(el=>el.addEventListener('click',()=>{region=el.dataset.region;document.querySelectorAll('[data-region]').forEach(b=>{b.classList.toggle('selected',b===el);b.setAttribute('aria-pressed',String(b===el));});renderComparison();}));
+  function candidateDetails(){const c=D.search.find(r=>r.candidate_id===candidate);$('candidate-detail').innerHTML=`<p class="eyebrow">SCREENING CANDIDATE #${c.candidate_id}</p><h3>P${c.P} / F${c.F} / ${c.inc_deg}°</h3><span class="tag">一天初筛 · 非正式复核指标</span><div class="candidate-metric"><span>最低导航可用率</span><strong>${fmt(c.min_nav_availability_pct)}%</strong></div><div class="candidate-metric"><span>最低通信覆盖率</span><strong>${fmt(c.min_comm_availability_pct)}%</strong></div><div class="candidate-metric"><span>最长导航中断</span><strong>${fmt(c.max_nav_outage_min)} 分钟</strong></div><p class="note">轨道相位会显著改变同时可见的几何分布。正式结论请对照下方七天复核表。</p>`;}
+  function renderSearch(){
+    const w=Math.max(240,$('search-plot').clientWidth||630),h=270,left=52,right=20,top=20,bottom=44,x=v=>left+v/100*(w-left-right),y=v=>h-bottom-v/100*(h-top-bottom);let svg=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="225个候选的导航与通信初筛可用率散点图">`;
+    for(let v=0;v<=100;v+=20)svg+=`<line x1="${x(0)}" x2="${x(100)}" y1="${y(v)}" y2="${y(v)}" stroke="#e8ede7"/><text x="${left-10}" y="${y(v)+4}" text-anchor="end" font-size="10" fill="#7b8a82">${v}</text><text x="${x(v)}" y="${h-bottom+20}" text-anchor="middle" font-size="10" fill="#7b8a82">${v}</text>`;
+    svg+=`<text x="${w/2}" y="${h-4}" text-anchor="middle" font-size="11" fill="#6f8078">最低通信覆盖率 / %</text><text transform="translate(13,${h/2}) rotate(-90)" text-anchor="middle" font-size="11" fill="#6f8078">最低导航可用率 / %</text>`;
+    for(const c of D.search)svg+=`<circle cx="${x(c.min_comm_availability_pct)}" cy="${y(c.min_nav_availability_pct)}" r="${c.candidate_id===candidate?6:3.2}" fill="${c.candidate_id===candidate?'#c18537':'#198f80'}" opacity="${c.candidate_id===candidate?1:.42}" data-candidate="${c.candidate_id}"><title>候选${c.candidate_id}：P${c.P}/F${c.F}/${c.inc_deg}°</title></circle>`;
+    $('search-plot').innerHTML=svg+'</svg>';$('search-plot').querySelectorAll('[data-candidate]').forEach(c=>c.addEventListener('click',()=>{candidate=+c.dataset.candidate;renderSearch();candidateDetails();}));
+    if(!$('candidate-picker')){const label=document.createElement('label');label.className='candidate-picker';label.innerHTML='选择候选 <select id="candidate-picker" aria-label="选择初筛候选"></select>';$('search-plot').after(label);$('candidate-picker').innerHTML=D.search.map(c=>`<option value="${c.candidate_id}">#${c.candidate_id} · P${c.P}/F${c.F}/${c.inc_deg}°</option>`).join('');$('candidate-picker').addEventListener('change',e=>{candidate=+e.target.value;renderSearch();candidateDetails();});}$('candidate-picker').value=String(candidate);
+  }
+  $('validation-body').innerHTML=D.validation.map(r=>`<tr><td>${r.candidate_id===0?'遥感继承':`#${r.candidate_id}`}</td><td>${r.P}</td><td>${r.F}</td><td>${r.inc_deg}°</td><td>${fmt(r.min_nav_availability_pct)}%</td><td>${fmt(r.min_comm_availability_pct)}%</td><td>${fmt(r.max_nav_outage_min)} 分钟</td></tr>`).join('');
+  const evidenceCards=[['回归测试',D.evidence[0].status==='passed','轨道半径/周期、窗口边界、PDOP与批量算法一致性。',D.evidence[0].finished],['短时全流程',D.evidence[1].status==='passed','36个候选，串联搜索、筛选、业务评价和输出生成。',D.evidence[1].finished],['正式业务补算',D.evidence[2].status==='passed',`225候选初筛，${D.audit.service_validation_rows}条长时复核记录，168个评价点。`,D.evidence[2].finished],['输出一致性审计',D.audit.status==='passed','核对候选域、四套108星根数、20份窗口文件及状态。',D.audit.checked_utc.slice(0,10)]];
+  $('evidence-grid').innerHTML=evidenceCards.map(([title,ok,detail,when])=>`<article class="evidence-card"><span class="tag ${ok?'green':'amber'}">${ok?'✓ PASS':'待验证'}</span><h2>${title}</h2><p>${detail}</p><div class="test-time">${esc(when)}</div></article>`).join('');
+  const cfg=D.config,configEntries=[['仿真历元 / UTC',cfg.epoch_utc.replace('T',' ').replace('Z','')],['卫星数量 / 高度',`${cfg.total_satellites} 颗 / ${cfg.altitude_km} km`],['传播模型','一阶 J2 长期项'],['遥感离轴指向',`${cfg.rs_offnadir_deg}°`],['光学太阳高度',`≥ ${cfg.optical_min_sun_elevation_deg}°`],['导航判据',`仰角 ≥ ${cfg.nav_min_elevation_deg}° / PDOP ≤ ${cfg.nav_pdop_limit}`],['通信几何仰角',`≥ ${cfg.comm_min_elevation_deg}°`],['验证时间 / 网格',`${cfg.validation_days} 天 / ${cfg.validation_grid_deg}°`]];
+  $('config-list').innerHTML=configEntries.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+  const artifacts=[['MD','实验报告','./results/full/实验报告.md','三类业务模型、数值结果与适用边界'],['MD','本次完成说明','./docs/本次完成说明.md','修复项、结果摘要与复现说明'],['CSV','跨业务比较','./results/full/cross_service_comparison.csv','相同区域和时长下的业务取舍'],['CSV','最终构型时间步长复核','./results/full/selected_service_time_step_checks.csv','20 / 10 / 5 秒采样敏感性'],['JSON','验收审计记录','./results/full/completion_audit.json','候选、轨道与窗口审计摘要'],['PNG','业务取舍图','./results/full/figures/07_cross_service_comparison.png','可直接用于汇报的对比图'],['CSV','双区域逐点重访','./results/full/points_joint_optimized.csv','168个评价点的全部遥感指标'],['MD','边界来源与许可','./data/SOURCES.md','geoBoundaries / OpenStreetMap contributors']];
+  $('artifact-list').innerHTML=artifacts.map(([type,title,url,sub])=>`<a class="artifact" href="${url}" target="_blank" rel="noopener"><span class="file-type">${type}</span><span><strong>${title}</strong><small>${sub}</small></span><span class="arrow">↗</span></a>`).join('');
+  $('report-content').textContent=D.report;$('report-button').addEventListener('click',()=>$('report-dialog').showModal());$('close-report').addEventListener('click',()=>$('report-dialog').close());$('report-dialog').addEventListener('click',e=>{if(e.target===$('report-dialog'))$('report-dialog').close();});
+  window.addEventListener('resize',()=>{if(!$('page-revisit').hidden)renderRevisit();if(!$('page-services').hidden)renderSearch();});
+  renderRevisit();renderComparison();renderSearch();candidateDetails();switchPage(location.hash.slice(1)||'overview',false);
+})();

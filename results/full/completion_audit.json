@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "checked_utc": "2026-09-30T05:49:01.554072+00:00",
+  "profile": "full",
+  "remote_candidates": 225,
+  "service_candidates": 225,
+  "service_validation_rows": 5,
+  "evaluation_points": 168,
+  "window_files_checked": 20,
+  "selected_minimum_availability_pct": {
+    "navigation": 73.7111441798942,
+    "communication": 83.3052248677249
+  },
+  "public_copy_note": "Public summary; local source-file hashes and machine logs are not distributed."
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="108颗低轨星座的福建、马来西亚遥感重访与导航通信比较，含真实仿真结果和验证说明。"><title>星座设计实验室 · 108 LEO</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="accessibility.css">
+  <script src="data.js" defer></script><script src="app.js" defer></script>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="#overview" aria-label="星座设计实验室首页"><span class="brand-mark">✳</span><span>ORBIT<span class="brand-sub">星座设计实验室</span></span></a>
+  <div class="side-label">MISSION WORKSPACE</div>
+  <nav aria-label="项目导航">
+    <button class="nav-item active" data-page="overview" aria-label="项目总览" title="项目总览" aria-current="page"><span class="nav-symbol">◫</span><span>项目总览</span><small>01</small></button>
+    <button class="nav-item" data-page="revisit" aria-label="遥感重访" title="遥感重访"><span class="nav-symbol">◷</span><span>遥感重访</span><small>02</small></button>
+    <button class="nav-item" data-page="services" aria-label="业务取舍" title="业务取舍"><span class="nav-symbol">⇄</span><span>业务取舍</span><small>03</small></button>
+    <button class="nav-item" data-page="evidence" aria-label="验收证据" title="验收证据"><span class="nav-symbol">☷</span><span>验收证据</span><small>04</small></button>
+  </nav>
+  <div class="side-project"><span class="status-dot"></span> MATLAB R2026a<div>108 颗 · 低轨区域星座</div><p>福建 / 西马 / 东马</p></div>
+  <div class="side-bottom"><div class="monogram">108</div><span>数值设计工作台<small>PUBLIC · 仿真结果展示</small></span></div>
+</aside>
+<main>
+  <header class="topbar"><div>工程空间 <span class="slash">/</span> <span id="breadcrumb">项目总览</span></div><div class="top-actions"><span class="pill"><span class="status-dot"></span> 已验证数据</span><button class="button small" id="report-button">查看完整报告 ↗</button></div></header>
+  <div class="content">
+    <section id="page-overview" class="page">
+      <div class="page-heading"><div><p class="eyebrow">REGIONAL CONSTELLATION / 108 LEO</p><h1>让星座设计的取舍，看得见。</h1><p class="muted">从福建遥感，到双区域服务，再到导航与通信。基于已完成的 MATLAB 仿真。</p></div><span class="snapshot" id="snapshot-date"></span></div>
+      <div class="stats" id="overview-stats"></div>
+      <div class="hero-grid">
+        <section class="globe-panel">
+          <div class="globe-heading"><div><span class="eyebrow">CONSTELLATION EXPLORER</span><h2>108 颗，四种设计视角</h2></div><span class="dark-pill">轨道几何演示</span></div>
+          <div class="globe-controls"><label class="sr-only" for="design-select">选择星座构型</label><select id="design-select"><option value="joint">福建＋马来西亚 · 遥感优选</option><option value="fujian">福建 · 遥感优选</option><option value="navigation">双区域 · 导航优选</option><option value="communication">双区域 · 通信优选</option></select><button id="globe-reset" class="dark-button">视角复位</button></div>
+          <canvas id="globe" aria-label="由108颗卫星初始轨道根数绘制的可拖动星座示意图">当前构型包含108颗卫星，可通过下方文字读取轨道参数。</canvas>
+          <div class="globe-note"><span>拖动旋转 · 滚轮缩放</span><span><i class="dot teal"></i>卫星 <i class="dot amber"></i>服务区</span></div>
+          <div class="orbit-facts" id="orbit-facts"></div>
+          <p class="globe-footnote">按 MATLAB 导出的历元轨道根数绘制；旋转只改变观察视角。</p>
+        </section>
+        <section class="panel mission-status"><div class="panel-heading"><h2>完成到哪一步？</h2><span class="tag green">数值交付完成</span></div><p class="muted">已完成的工作有运行记录和结果文件可追溯。</p><div id="milestones"></div><div class="status-callout"><span class="callout-symbol">!</span><div><strong>流程完成 ≠ 全部业务达标</strong><p>福建遥感达到假设目标；双区域遥感、导航、通信的门限仍有差距。</p></div></div><button class="text-button" data-goto="evidence">打开验收证据 <span>→</span></button></section>
+      </div>
+      <div class="bottom-grid"><section class="panel"><div class="panel-heading"><h2>四个设计问题，四个结果</h2><span class="caption">正式复核 · 7 天 / 10 秒</span></div><div id="target-list"></div></section><section class="insight-panel"><span class="eyebrow">DESIGN INSIGHT</span><h2>更好的导航覆盖，<br>不一定带来更短的遥感间隔。</h2><p>导航／通信优选构型在马来西亚的遥感最大空窗增至 <strong id="tradeoff-number"></strong> 分钟。</p><button class="button dark" data-goto="services">探索三类业务取舍 →</button></section></div>
+    </section>
+
+    <section id="page-revisit" class="page" hidden>
+      <div class="page-heading"><div><p class="eyebrow">REMOTE SENSING / REVISIT</p><h1>同一个地点，要等多久？</h1><p class="muted">开始到开始是重访间隔；上次机会结束到下次开始是空窗。下方指标统计整个七天仿真。</p></div></div>
+      <div class="filterbar"><label>星座方案<select id="remote-design"><option value="joint">双区域遥感优选</option><option value="fujian">福建遥感优选</option></select></label><label>代表地点<select id="city-select"></select></label><label>成像机会<select id="mode-select"><option value="geometric">几何机会</option><option value="optical">光学白昼机会</option></select></label><a id="download-windows" class="button" download>下载该地点原始窗口 CSV ↓</a></div>
+      <div class="stats" id="revisit-stats" aria-live="polite"></div>
+      <section class="panel timeline-panel"><div class="panel-heading"><div><h2>逐次成像机会</h2><p class="muted" id="day-label"></p></div><label class="day-control">仿真日 <select id="day-select"></select></label></div><div id="timeline" class="timeline"></div><div class="legend"><i class="dot teal"></i>可成像几何／光照机会 <span>空白表示无机会 · UTC 时间</span></div><p class="note" id="window-summary"></p></section>
+      <div class="region-grid"><section class="panel"><div class="panel-heading"><h2>区域点位分布</h2><span class="caption">实测边界 · 0.5°采样</span></div><div id="region-map" class="map-holder"></div><p class="note">橙色标记为当前代表地点。区域边界来自项目中的 geoBoundaries 数据。</p></section><section class="panel"><div class="panel-heading"><h2>当日窗口明细</h2><span id="window-count" class="tag"></span></div><div class="table-wrap window-table"><table><thead><tr><th>开始 UTC</th><th>结束 UTC</th><th>持续 / 秒</th><th>前次空窗 / 分</th></tr></thead><tbody id="window-body"></tbody></table></div></section></div>
+      <div class="info-strip">光学模式加入太阳高度 ≥ 10°，未计云量、载荷调度和实际幅宽。因此这里展示的是拍摄机会，而非已交付影像。</div>
+    </section>
+
+    <section id="page-services" class="page" hidden>
+      <div class="page-heading"><div><p class="eyebrow">MULTI-SERVICE / TRADE-OFFS</p><h1>优化目标改变，星座就会改变。</h1><p class="muted">相同的108颗、600 km、区域采样和七天评估窗，比较三种设计目标。</p></div></div>
+      <div class="filterbar"><div class="segmented" aria-label="选择地区"><button data-region="malaysia" class="selected" aria-pressed="true">马来西亚</button><button data-region="fujian" aria-pressed="false">福建</button></div><span class="muted">各方案是替代设计，不代表同时部署三套108星星座。</span></div>
+      <div class="comparison-charts" id="comparison-charts"></div>
+      <section class="panel"><div class="panel-heading"><h2>225 个候选，如何走到最终构型？</h2><span class="tag green">筛选已完成</span></div><div class="search-grid"><div><div class="search-plot" id="search-plot"></div><p class="note">每点为一个30秒、一天粗筛候选。点位可选择以查看 P/F/倾角；这些值不是七天正式复核结果。</p></div><div class="candidate-detail" id="candidate-detail" aria-live="polite"></div></div></section>
+      <section class="panel spaced"><div class="panel-heading"><h2>正式复核结果</h2><span class="caption">包含原有优胜构型及遥感继承方案</span></div><div class="table-wrap"><table><thead><tr><th>候选</th><th>轨道面 P</th><th>相位 F</th><th>倾角</th><th>最低导航可用率</th><th>最低通信覆盖率</th><th>最大导航中断</th></tr></thead><tbody id="validation-body"></tbody></table></div></section>
+      <div class="info-strip">导航按仰角 ≥ 5°、PDOP ≤ 6 评价；通信按仰角 ≥ 25°评价几何覆盖。实际定位精度和端到端通信质量仍需载荷与系统参数。</div>
+    </section>
+
+    <section id="page-evidence" class="page" hidden>
+      <div class="page-heading"><div><p class="eyebrow">VERIFICATION / EVIDENCE</p><h1>让每个“完成”，都有依据。</h1><p class="muted">完成度由实测日志、审计结果和交付文件判断；这里不使用主观完成百分比。</p></div><a class="button" id="download-audit" href="./results/full/completion_audit.json" download>下载公开验收摘要 ↓</a></div>
+      <div class="evidence-grid" id="evidence-grid"></div>
+      <div class="bottom-grid"><section class="panel"><div class="panel-heading"><h2>模型与任务假设</h2><span class="tag">配置快照</span></div><dl id="config-list" class="config-list"></dl></section><section class="panel"><div class="panel-heading"><h2>当前工程边界</h2></div><div class="scope-list"><div><span class="scope-icon done">✓</span><div><strong>已完成 · 轨道与几何分析</strong><p>候选搜索、区域重访、导航PDOP、通信覆盖、数值敏感性与报告。</p></div></div><div><span class="scope-icon pending">○</span><div><strong>待需求输入 · 真实业务系统</strong><p>载荷幅宽/GSD、测距与时钟误差、射频/容量/网关和一星多用资源约束。</p></div></div><div><span class="scope-icon pending">○</span><div><strong>尚未证明 · 全域全年最优</strong><p>当前为离散候选、七天和有限空间网格；初筛候选仅短名单接受精细复核。</p></div></div></div><div class="status-callout"><div><strong>界面是结果浏览器</strong><p>修改真实仿真参数需编辑 mission_config.m 并运行 MATLAB。此界面没有实时计算或启动仿真的后台接口。</p></div></div></section></div>
+      <section class="panel spaced"><div class="panel-heading"><h2>交付物索引</h2><span class="caption">均来自当前项目目录</span></div><div id="artifact-list" class="artifact-list"></div></section>
+    </section>
+    <footer>ORBIT / 星座设计实验室 <span>数据来源：MATLAB R2026a 仿真输出 · 页面仅浏览与导出</span> · <a href="./data/SOURCES.md">边界来源与许可</a> · © OpenStreetMap contributors</footer>
+  </div>
+</main>
+<dialog id="report-dialog"><div class="dialog-heading"><h2>108颗低轨星座 · 实验报告</h2><button class="button" id="close-report">关闭 ✕</button></div><pre id="report-content"></pre></dialog>
+<div id="toast" role="status" hidden></div>
+<noscript>此交互界面需要浏览器启用 JavaScript。原始结果位于 results/full。</noscript>
+</body></html>
